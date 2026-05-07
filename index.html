@@ -386,6 +386,28 @@
       pointer-events: none;
     }
 
+    /* ─── 预设 ─── */
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .preset-btn {
+      height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.12s;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .preset-btn:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-light);
+    }
+
     /* ─── 代码输出 ─── */
     .output-code {
       background: var(--surface);
@@ -789,6 +811,16 @@
     </div>
 
     <div class="controls-body">
+      <!-- 预设 -->
+      <div class="control-group">
+        <div class="section-label">
+          <span>预设</span>
+        </div>
+        <div class="preset-grid" id="presetGrid"></div>
+      </div>
+
+      <div class="divider"></div>
+
       <!-- 画布背景 -->
       <div class="control-group">
         <div class="section-label">
@@ -866,6 +898,7 @@
           <input type="range" id="popupOpacity" min="10" max="100" value="50">
         </div>
         <div class="popup-actions">
+          <button id="popupDuplicateBtn">复制</button>
           <button id="popupDeleteBtn" class="popup-delete">删除</button>
         </div>
       </div>
@@ -1068,7 +1101,93 @@
       hueDragging = false;
     });
 
+    // ─── 预设 ───
+    const presets = [
+      {
+        name: 'Warm Aurora',
+        background: '#FFF5EE',
+        bgOpacity: 100,
+        points: [
+          { x: 18, y: 22, color: '#F5A07B', blur: 300, opacity: 50 },
+          { x: 32, y: 62, color: '#E8789A', blur: 280, opacity: 45 },
+          { x: 72, y: 28, color: '#B08FD8', blur: 320, opacity: 45 },
+          { x: 58, y: 78, color: '#D4709F', blur: 260, opacity: 40 },
+        ]
+      },
+      {
+        name: 'Golden Hour',
+        background: '#FF5C33',
+        bgOpacity: 100,
+        points: [
+          { x: 10, y: 10, color: '#F7FF46', blur: 300, opacity: 74 },
+          { x: 87, y: 84, color: '#FF6591', blur: 280, opacity: 69 },
+          { x: 95, y: 56, color: '#FFFFFF', blur: 200, opacity: 100 },
+          { x: 94, y: 2, color: '#FF8B4D', blur: 300, opacity: 100 },
+          { x: 25, y: 38, color: '#FFFAF2', blur: 260, opacity: 100 },
+        ]
+      },
+      {
+        name: 'Ocean Mist',
+        background: '#EFF6FF',
+        bgOpacity: 100,
+        points: [
+          { x: 20, y: 30, color: '#4A90D9', blur: 280, opacity: 50 },
+          { x: 65, y: 25, color: '#47C9A2', blur: 300, opacity: 45 },
+          { x: 45, y: 72, color: '#8B7FD4', blur: 280, opacity: 45 },
+          { x: 80, y: 65, color: '#5BC0EB', blur: 250, opacity: 40 },
+        ]
+      },
+      {
+        name: 'Deep Night',
+        background: '#1A1630',
+        bgOpacity: 100,
+        points: [
+          { x: 22, y: 28, color: '#6366F1', blur: 300, opacity: 50 },
+          { x: 68, y: 35, color: '#8B5CF6', blur: 280, opacity: 45 },
+          { x: 40, y: 72, color: '#2DD4BF', blur: 300, opacity: 42 },
+          { x: 78, y: 70, color: '#EC4899', blur: 260, opacity: 40 },
+        ]
+      },
+    ];
+
+    function loadPreset(index) {
+      const preset = presets[index];
+      baseColorEl.value = preset.background;
+      baseHexEl.value = preset.background.toUpperCase();
+      baseOpacityEl.value = preset.bgOpacity;
+      baseOpacityValueEl.textContent = preset.bgOpacity + '%';
+
+      points = preset.points.map(p => ({ ...p, id: nextId++ }));
+      selectedPointId = null;
+      closePopup();
+      renderPoints();
+      renderPointList();
+      updateBackground();
+      showToast('已加载预设');
+    }
+
+    function renderPresets() {
+      const grid = document.getElementById('presetGrid');
+      grid.innerHTML = '';
+
+      presets.forEach((preset, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        btn.title = preset.name;
+
+        const bgParts = preset.points.map(p => {
+          const { r, g, b } = hexToRgb(p.color);
+          return `radial-gradient(circle at ${p.x}% ${p.y}%, rgba(${r},${g},${b},${p.opacity / 100}), transparent 50%)`;
+        });
+        btn.style.background = bgParts.join(',') + `, ${preset.background}`;
+
+        btn.addEventListener('click', () => loadPreset(i));
+        grid.appendChild(btn);
+      });
+    }
+
     function init() {
+      renderPresets();
       renderPoints();
       renderPointList();
       updateBackground();
@@ -1129,6 +1248,7 @@
             <div class="point-pos">${Math.round(point.x)}%, ${Math.round(point.y)}%</div>
           </div>
           <div class="point-actions">
+            <button class="point-btn" data-action="duplicate" data-id="${point.id}" title="复制">⧉</button>
             <button class="point-btn" data-action="edit" data-id="${point.id}">Edit</button>
             <button class="point-btn point-btn-delete" data-action="delete" data-id="${point.id}">&#x2715;</button>
           </div>
@@ -1181,6 +1301,11 @@
           updateBackground();
         });
 
+        item.querySelector('[data-action="duplicate"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          duplicatePoint(point.id);
+        });
+
         item.querySelector('[data-action="edit"]').addEventListener('click', (e) => {
           e.stopPropagation();
           selectPoint(point.id);
@@ -1224,6 +1349,26 @@
       renderPointList();
       updateBackground();
       showToast('已删除');
+    }
+
+    function duplicatePoint(id) {
+      const point = points.find(p => p.id === id);
+      if (!point) return;
+      const index = points.indexOf(point);
+      const newPoint = {
+        id: nextId++,
+        x: Math.min(95, point.x + 5),
+        y: Math.min(95, point.y + 5),
+        color: point.color,
+        blur: point.blur,
+        opacity: point.opacity,
+      };
+      points.splice(index + 1, 0, newPoint);
+      selectPoint(newPoint.id);
+      renderPoints();
+      renderPointList();
+      updateBackground();
+      showToast('已复制');
     }
 
     // ─── 悬浮菜单 ───
@@ -1304,6 +1449,10 @@
 
     document.getElementById('popupDeleteBtn').addEventListener('click', () => {
       if (selectedPointId) deletePoint(selectedPointId);
+    });
+
+    document.getElementById('popupDuplicateBtn').addEventListener('click', () => {
+      if (selectedPointId) duplicatePoint(selectedPointId);
     });
 
     // 点击 popup 内部不关闭
