@@ -358,6 +358,34 @@
 
     .point-btn-delete:hover { background: var(--red-light); color: var(--red); }
 
+    /* ─── 拖拽排序 ─── */
+    .point-drag-handle {
+      cursor: grab;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      padding: 0 2px;
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+
+    .point-item:hover .point-drag-handle,
+    .point-item.selected .point-drag-handle { opacity: 1; }
+    .point-drag-handle:active { cursor: grabbing; }
+
+    .point-item.dragging { opacity: 0.3; }
+    .point-item.drag-over-top { box-shadow: inset 0 2px 0 0 var(--accent); }
+    .point-item.drag-over-bottom { box-shadow: inset 0 -2px 0 0 var(--accent); }
+
+    /* ─── 渐变球 ─── */
+    .gradient-orb {
+      position: absolute;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
     /* ─── 代码输出 ─── */
     .output-code {
       background: var(--surface);
@@ -411,7 +439,7 @@
       border: 2px solid rgba(255,255,255,0.9);
       box-shadow: 0 1px 4px rgba(0,0,0,0.3);
       transition: transform 0.12s ease, box-shadow 0.12s ease;
-      z-index: 10;
+      z-index: 100;
     }
 
     .gradient-point::before {
@@ -1082,10 +1110,19 @@
 
     function renderPointList() {
       pointList.innerHTML = '';
-      points.forEach(point => {
+      points.forEach((point, index) => {
         const item = document.createElement('div');
         item.className = 'point-item' + (point.id === selectedPointId ? ' selected' : '');
+        item.dataset.index = index;
+
         item.innerHTML = `
+          <div class="point-drag-handle" title="拖拽排序">
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+              <circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/>
+              <circle cx="3" cy="6" r="1.2"/><circle cx="7" cy="6" r="1.2"/>
+              <circle cx="3" cy="10" r="1.2"/><circle cx="7" cy="10" r="1.2"/>
+            </svg>
+          </div>
           <div class="point-color" style="background: ${point.color}"></div>
           <div class="point-info">
             <div class="point-hex">${point.color.toUpperCase()}</div>
@@ -1096,6 +1133,53 @@
             <button class="point-btn point-btn-delete" data-action="delete" data-id="${point.id}">&#x2715;</button>
           </div>
         `;
+
+        // 拖拽排序
+        const handle = item.querySelector('.point-drag-handle');
+        handle.addEventListener('mousedown', () => { item.draggable = true; });
+
+        item.addEventListener('dragstart', (e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', String(index));
+          requestAnimationFrame(() => item.classList.add('dragging'));
+        });
+
+        item.addEventListener('dragend', () => {
+          item.draggable = false;
+          item.classList.remove('dragging');
+          [...pointList.children].forEach(el => el.classList.remove('drag-over-top', 'drag-over-bottom'));
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (pointList.querySelector('.dragging') === item) return;
+          const rect = item.getBoundingClientRect();
+          [...pointList.children].forEach(el => el.classList.remove('drag-over-top', 'drag-over-bottom'));
+          if (e.clientY < rect.top + rect.height / 2) {
+            item.classList.add('drag-over-top');
+          } else {
+            item.classList.add('drag-over-bottom');
+          }
+        });
+
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+          const rect = item.getBoundingClientRect();
+          let toIndex = e.clientY < rect.top + rect.height / 2 ? index : index + 1;
+          if (fromIndex < toIndex) toIndex--;
+          if (fromIndex === toIndex) return;
+          const [moved] = points.splice(fromIndex, 1);
+          points.splice(toIndex, 0, moved);
+          renderPoints();
+          renderPointList();
+          updateBackground();
+        });
 
         item.querySelector('[data-action="edit"]').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1228,21 +1312,44 @@
 
     // ─── 背景 ───
     function updateBackground() {
+      canvas.querySelectorAll('.gradient-orb').forEach(el => el.remove());
+
       const baseColorValue = baseColorEl.value;
       const baseOpVal = baseOpacityEl.value / 100;
-      const baseColorWithOpacity = hexToRgba(baseColorValue, baseOpVal);
+      canvas.style.background = hexToRgba(baseColorValue, baseOpVal);
 
-      const radialGradients = points.map(point => {
+      points.forEach((point, i) => {
+        const orb = document.createElement('div');
+        orb.className = 'gradient-orb';
+        const size = Math.round(point.blur * 2.5);
+        const blurAmount = Math.round(point.blur * 0.4);
         const rgba = hexToRgba(point.color, point.opacity / 100);
-        return `radial-gradient(circle at ${point.x}% ${point.y}%, ${rgba}, transparent ${point.blur}px)`;
+        orb.style.left = point.x + '%';
+        orb.style.top = point.y + '%';
+        orb.style.width = size + 'px';
+        orb.style.height = size + 'px';
+        orb.style.background = rgba;
+        orb.style.filter = `blur(${blurAmount}px)`;
+        orb.style.zIndex = String(points.length - i);
+        canvas.appendChild(orb);
       });
 
-      const baseGradient = `linear-gradient(136deg, ${baseColorWithOpacity} 0%, ${baseColorWithOpacity} 100%)`;
-      const allGradients = [...radialGradients, baseGradient].join(',\n  ');
+      generateOutput();
+    }
 
-      const css = `background:\n  ${allGradients};`;
-      canvas.style.background = allGradients;
-      outputCode.textContent = css;
+    function generateOutput() {
+      const baseColorValue = baseColorEl.value;
+      const baseOpVal = baseOpacityEl.value / 100;
+      const baseRgba = hexToRgba(baseColorValue, baseOpVal);
+
+      const orbsHtml = points.map(point => {
+        const size = Math.round(point.blur * 2.5);
+        const blurAmount = Math.round(point.blur * 0.4);
+        const rgba = hexToRgba(point.color, point.opacity / 100);
+        return `  <div style="position:absolute;left:${Math.round(point.x)}%;top:${Math.round(point.y)}%;width:${size}px;height:${size}px;border-radius:50%;transform:translate(-50%,-50%);background:${rgba};filter:blur(${blurAmount}px);pointer-events:none"></div>`;
+      }).join('\n');
+
+      outputCode.textContent = `<div style="position:relative;width:100%;height:100%;overflow:hidden;background:${baseRgba}">\n${orbsHtml}\n</div>`;
     }
 
     // ─── 拖拽 ───
@@ -1371,6 +1478,10 @@
     function toggleFullscreen(on) {
       if (on) {
         fsCanvas.style.background = canvas.style.background;
+        fsCanvas.querySelectorAll('.gradient-orb').forEach(el => el.remove());
+        canvas.querySelectorAll('.gradient-orb').forEach(orb => {
+          fsCanvas.appendChild(orb.cloneNode(true));
+        });
         fsOverlay.classList.add('active');
         fsExpand.style.display = 'none';
         fsCollapse.style.display = 'block';
@@ -1437,19 +1548,19 @@
       ctx.fillRect(0, 0, w, h);
 
       points.forEach(point => {
-        const rgba = hexToRgba(point.color, point.opacity / 100);
-        const rg = ctx.createRadialGradient(
-          (point.x / 100) * w, (point.y / 100) * h, 0,
-          (point.x / 100) * w, (point.y / 100) * h, point.blur
-        );
-        rg.addColorStop(0, rgba);
-        rg.addColorStop(1, 'rgba(0,0,0,0)');
+        const cx = (point.x / 100) * w;
+        const cy = (point.y / 100) * h;
+        const radius = Math.round(point.blur * 1.5);
+        const a = point.opacity / 100;
+        const {r, g, b} = hexToRgb(point.color);
+        const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+        rg.addColorStop(0, `rgba(${r},${g},${b},${a})`);
+        rg.addColorStop(0.3, `rgba(${r},${g},${b},${a * 0.7})`);
+        rg.addColorStop(0.6, `rgba(${r},${g},${b},${a * 0.3})`);
+        rg.addColorStop(0.85, `rgba(${r},${g},${b},${a * 0.05})`);
+        rg.addColorStop(1, `rgba(${r},${g},${b},0)`);
         ctx.fillStyle = rg;
-        ctx.fillRect(
-          (point.x / 100) * w - point.blur,
-          (point.y / 100) * h - point.blur,
-          point.blur * 2, point.blur * 2
-        );
+        ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
       });
 
       const link = document.createElement('a');
