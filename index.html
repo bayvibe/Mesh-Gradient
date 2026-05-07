@@ -927,11 +927,8 @@
 
   <script>
     // 状态
-    let points = [
-      { id: 1, x: 20, y: 30, color: '#6DBDED', blur: 200, opacity: 50 },
-      { id: 2, x: 50, y: 50, color: '#99F6F4', blur: 250, opacity: 45 },
-      { id: 3, x: 80, y: 70, color: '#AAF875', blur: 220, opacity: 45 }
-    ];
+    let points = [];
+    const defaultPresetIndex = 0;
     let selectedPointId = null;
     let nextId = 4;
     let isDragging = false;
@@ -1192,9 +1189,7 @@
 
     function init() {
       renderPresets();
-      renderPoints();
-      renderPointList();
-      updateBackground();
+      loadPreset(defaultPresetIndex);
     }
 
     function renderPoints() {
